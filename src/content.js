@@ -1,117 +1,187 @@
-const icon = (n) => `dc-icon--${n}`;
-const sections = [
-    'gem', // Treasures from God’s Word
-    'wheat', // Apply Yourself to the Field Ministry
-    'sheep' // Living as Christians
-].reduce((previous, section) => ({ ...previous, [section]: icon(section) }), {});
+class MeetingExtractor {
+    #MEETING_SECTIONS = {
+        gem: 'dc-icon--gem',     // Treasures from God's Word
+        wheat: 'dc-icon--wheat', // Apply Yourself to the Field Ministry
+        sheep: 'dc-icon--sheep'  // Living as Christians
+    };
 
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-    if (request.action === 'getSource') {
-        const meetings = [];
-
-        document.querySelectorAll('div.pub-mwb:not(:has(> div#f1))').forEach((meeting) => {
-            const data = {
-                label: getText('[data-pid="1"]', meeting),
-                theme: getText('[data-pid="2"]', meeting),
-                songs: []
-            };
-
-            Array.from(meeting.querySelectorAll(`.${icon('music')} strong:first-child`)).forEach((song) => {
-                data.songs.push(getSong(song.textContent));
-            });
-
-            let section = null;
-            Array.from(meeting.querySelector('div.bodyTxt').querySelectorAll('div, h3')).forEach((item) => {
-
-                item.classList.forEach((name) => {
-                    if (Object.values(sections).includes(name)) {
-                        section = Object.keys(sections).find(k => sections[k] === name);
-                        data[section] = [];
-                    }
-                });
-
-                const isHeading = item.tagName === 'H3';
-                const isBaseDiv = item.tagName === 'DIV' && item.classList.contains('du-fontSize--base');
-                const looksLikeNumberedTitle = /^\d+\./.test(item.textContent.trim());
-
-                if (section && (isHeading || isBaseDiv) && looksLikeNumberedTitle) {
-                    /* ^\(                < matches ( on the beginning of the string
-                     *     ([^()]*)       < capturing group 1, everything but [ and ]
-                     * \)                 < matches )
-                     * \s*                < matches 0 or more whitespaces
-                     * ([^]*)             < capturing group 2, rest of the string
-                     */
-                    const info = item.nextElementSibling.textContent.trim().match(/^\(([^()]*)\)\s*([^]*)/); // next element contains descr
-                    const title = item.textContent.trim().match(/^(\d+)\.(.*)/); // set part number apart
-                    const number = getDigit(title[1]);
-                    const entry = {
-                        time: getDigit(info[1]),
-                        title: title[2].trim(),
-                        number
-                    };
-                    if (info[2]) {
-                        const description = info[2].trim();
-                        /* ([^]*)\(            < capturing group 1, everything untill (
-                         * ((?:lmd|th).*)      < capturing group 2, everything starting with lmd or th
-                         * \)$                 < matches ) right before the end of line
-                         */
-                        const hasLesson = description.match(/([^]*)\(((?:lmd|th).*)\)$/);
-                        if (hasLesson) {
-                            entry.lesson = hasLesson[2].trim();
-                            if (number === 3) { // number 3 is always bible reading
-                                entry.assignment = hasLesson[1].trim();
-                            } else {
-                                // "Explaining Your Beliefs" might be either a talk or a demonstration
-                                const isTalkOrEYB = hasLesson[1].trim().match(/(^[^.]*).(?:.*)\—(?:[^]*)\: (.*)$/);
-                                if (isTalk(entry.title) || (isTalkOrEYB && isTalk(isTalkOrEYB[1]))) {
-                                    entry.theme = isTalkOrEYB[2].trim();
-                                }
-                            }
-                        }
-                    }
-
-                    data[section].push(entry);
-                }
-            });
-
-            meetings.push(Object.entries({
-                week: getElement('#todayWeek')?.value || null,
-                label: data.label,
-                theme: data.theme,
-                opening_song: data.songs[0],
-                opening_talk: data.gem[0],
-                spiritual_gems: data.gem[1],
-                bible_reading: data.gem[2],
-                apply_yourself_to_the_field_ministry: data.wheat,
-                middle_song: data.songs[1],
-                living_as_christians: data.sheep.slice(0, -1),
-                congregation_bible_study: data.sheep[data.sheep.length - 1],
-                closing_song: data.songs[2]
-            }).reduce((a, [k, v]) => (v === null ? a : (a[k] = v, a)), {}));
-        });
-
-        sendResponse(meetings);
+    constructor() {
+        this.#setupMessageListener();
     }
-});
 
-function isTalk(str) {
-    // @TODO: Find a better way of differentiating without the usage of static strings
-    return ['Talk', 'Discurso'].includes(str);
+    #setupMessageListener() {
+        chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+            if (request.action === 'getSource') {
+                const meetings = this.#extractAllMeetings();
+                sendResponse(meetings);
+            }
+        });
+    }
+
+    #extractAllMeetings() {
+        const meetingElements = document.querySelectorAll('div.pub-mwb:not(:has(> div#f1))');
+        return Array.from(meetingElements).map(element => this.#extractSingleMeeting(element));
+    }
+
+    #extractSingleMeeting(meetingElement) {
+        const meetingData = {
+            label: this.#getTextContent('[data-pid="1"]', meetingElement),
+            theme: this.#getTextContent('[data-pid="2"]', meetingElement),
+            songs: this.#extractSongs(meetingElement),
+            gem: [],
+            wheat: [],
+            sheep: []
+        };
+
+        this.#parseMeetingParts(meetingElement, meetingData);
+
+        return this.#buildMeetingStructure(meetingData);
+    }
+
+    #extractSongs(meetingElement) {
+        const songElements = meetingElement.querySelectorAll('.dc-icon--music strong:first-child');
+        return Array.from(songElements).map(element => this.#parseSongNumber(element.textContent));
+    }
+
+    #parseMeetingParts(meetingElement, meetingData) {
+        const bodyElements = meetingElement.querySelector('div.bodyTxt').querySelectorAll('div, h3');
+        let currentSection = null;
+
+        Array.from(bodyElements).forEach(element => {
+            const sectionName = this.#findSectionFromElement(element);
+            if (sectionName) {
+                currentSection = sectionName;
+                return;
+            }
+
+            if (currentSection && this.#isNumberedMeetingPart(element)) {
+                const partData = this.#extractMeetingPart(element);
+                if (partData) {
+                    meetingData[currentSection].push(partData);
+                }
+            }
+        });
+    }
+
+    #findSectionFromElement(element) {
+        for (const [sectionName, iconClass] of Object.entries(this.#MEETING_SECTIONS)) {
+            if (element.classList.contains(iconClass)) {
+                return sectionName;
+            }
+        }
+        return null;
+    }
+
+    #isNumberedMeetingPart(element) {
+        const isHeading = element.tagName === 'H3';
+        const isBaseDiv = element.tagName === 'DIV' && element.classList.contains('du-fontSize--base');
+        // Match lines starting with digits followed by a dot (e.g., "1.", "10.")
+        const hasNumberPrefix = /^\d+\./.test(element.textContent.trim());
+
+        return (isHeading || isBaseDiv) && hasNumberPrefix;
+    }
+
+    #extractMeetingPart(element) {
+        const titleText = element.textContent.trim();
+        const descriptionElement = element.nextElementSibling;
+
+        if (!descriptionElement) return null;
+
+        const descriptionText = descriptionElement.textContent.trim();
+        // Extract part number and title from "1. Title text"
+        const titleMatch = titleText.match(/^(\d+)\.(.*)/);
+        // Extract time and description from "(5 min) Additional info text"
+        const descriptionMatch = descriptionText.match(/^\(([^()]*)\)\s*([^]*)/);
+
+        if (!titleMatch || !descriptionMatch) return null;
+
+        const partNumber = this.#extractDigits(titleMatch[1]);
+        const partTitle = titleMatch[2].trim();
+        const timeAllocation = this.#extractDigits(descriptionMatch[1]);
+        const additionalInfo = descriptionMatch[2]?.trim() || '';
+
+        const part = {
+            number: partNumber,
+            title: partTitle,
+            time: timeAllocation
+        };
+
+        if (additionalInfo) {
+            this.#addLessonAndAssignmentInfo(part, additionalInfo, partNumber);
+        }
+
+        return part;
+    }
+
+    #addLessonAndAssignmentInfo(part, additionalInfo, partNumber) {
+        // Extract lesson reference from text ending with "(lmd p. 123)" or "(th study 15)"
+        const lessonMatch = additionalInfo.match(/([^]*)\(((?:lmd|th).*)\)$/);
+        if (!lessonMatch) return;
+
+        part.lesson = lessonMatch[2].trim();
+        const assignmentText = lessonMatch[1].trim();
+
+        if (partNumber === 3) {
+            part.assignment = assignmentText;
+        } else {
+            // Extract theme from talk format "Title. Context—Setting: Theme text"
+            const talkMatch = assignmentText.match(/(^[^.]*).(?:.*)\—(?:[^]*)\: (.*)$/);
+            if (this.#isTalkAssignment(part.title) || (talkMatch && this.#isTalkAssignment(talkMatch[1]))) {
+                part.theme = talkMatch?.[2]?.trim();
+            }
+        }
+    }
+
+    #buildMeetingStructure(meetingData) {
+        const structure = {
+            week: this.#getElement('#todayWeek')?.value || null,
+            label: meetingData.label,
+            theme: meetingData.theme,
+            opening_song: meetingData.songs[0],
+            opening_talk: meetingData.gem[0],
+            spiritual_gems: meetingData.gem[1],
+            bible_reading: meetingData.gem[2],
+            apply_yourself_to_the_field_ministry: meetingData.wheat,
+            middle_song: meetingData.songs[1],
+            living_as_christians: meetingData.sheep.slice(0, -1),
+            congregation_bible_study: meetingData.sheep[meetingData.sheep.length - 1],
+            closing_song: meetingData.songs[2]
+        };
+
+        return this.#removeNullValues(structure);
+    }
+
+    #removeNullValues(obj) {
+        return Object.entries(obj).reduce((result, [key, value]) => {
+            if (value !== null) {
+                result[key] = value;
+            }
+            return result;
+        }, {});
+    }
+
+    #isTalkAssignment(title) {
+        return ['Talk', 'Discurso'].includes(title);
+    }
+
+    #getTextContent(selector, baseElement) {
+        return this.#getElement(selector, baseElement)?.textContent || '';
+    }
+
+    #getElement(selector, baseElement) {
+        return (baseElement || document).querySelector(selector);
+    }
+
+    #extractDigits(text) {
+        // Remove all non-digit characters and convert to number
+        return +text.replace(/\D/g, '');
+    }
+
+    #parseSongNumber(text) {
+        const songNumber = this.#extractDigits(text);
+        return songNumber >= 1 && songNumber <= 161 ? songNumber : '-';
+    }
 }
 
-function getText(element, base) {
-    return getElement(element, base).textContent
-}
-
-function getElement(selector, base) {
-    return (base || document).querySelector(selector);
-}
-
-function getDigit(string) {
-    return +string.replace(/\D/g, '');
-}
-
-function getSong(string) {
-    const n = getDigit(string);
-    return n >= 1 && n <= 159 ? n : '-';
-}
+// Initialize the meeting extractor when the content script loads
+new MeetingExtractor();
