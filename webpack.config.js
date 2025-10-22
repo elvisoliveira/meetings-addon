@@ -34,8 +34,7 @@ function copyPluginIconPatterns () {
 function makeManifest(manifestVersion) {
 
     const domains = [
-        'https://wol.jw.org/*/wol/meetings/*',
-        'https://elvisoliveira.github.io/jwpub/'
+        'https://wol.jw.org/*/wol/*'
     ];
 
     const manifest = {};

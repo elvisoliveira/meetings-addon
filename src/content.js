@@ -19,7 +19,7 @@ class MeetingExtractor {
     }
 
     #extractAllMeetings() {
-        const meetingElements = document.querySelectorAll('div.pub-mwb:not(:has(> div#f1))');
+        const meetingElements = document.querySelectorAll('article.pub-mwb:not(:has(> div#f1))');
         return Array.from(meetingElements).map(element => this.#extractSingleMeeting(element));
     }
 
