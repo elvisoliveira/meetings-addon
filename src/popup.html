@@ -1,32 +1,51 @@
 <!doctype html>
-<html>
+<html lang="en">
 
 <head>
     <meta charset="UTF-8" />
-    <link rel=stylesheet href="popup.min.css">
+    <link rel="stylesheet" href="popup.min.css">
 </head>
 
-<body>
-    <pre id="code"></pre>
-    <hr />
-    <div id="form">
-        <fieldset>
-            <dl>
-                <dt><label for="responseType">Format:</label></dt>
-                <dd>
-                    <select id="responseType">
-                        <option value="array">Array</option>
-                        <option value="object">Object</option>
-                    </select>
-                </dd>
-            </dl>
-            <dl>
-                <dt><label for="show">Show fields to be assigned:</label></dt>
-                <dd><input type="checkbox" id="show" /></dd>
-            </dl>
-        </fieldset>
-        <button id="copy">Copy</button>
+<body class="state-loading">
+    <header id="header">
+        <div id="meeting-label" aria-live="polite"></div>
+        <button id="refresh" type="button" title="Refresh from current tab" aria-label="Refresh">↻</button>
+    </header>
+
+    <div id="content">
+        <div id="skeleton" aria-hidden="true">
+            <div></div>
+            <div></div>
+            <div></div>
+            <div></div>
+            <div></div>
+        </div>
+        <pre id="code" role="region" aria-label="Meeting JSON"></pre>
+        <div id="empty">
+            <strong id="empty-title">No meeting page detected</strong>
+            <p>Open a midweek meeting on <code>wol.jw.org</code>, then press the refresh button.</p>
+        </div>
     </div>
+
+    <footer id="form">
+        <div class="row">
+            <span class="form-label">Format</span>
+            <div role="radiogroup" aria-label="Output format" class="segmented">
+                <button type="button" role="radio" aria-checked="true" data-format="array">Array</button>
+                <button type="button" role="radio" aria-checked="false" data-format="object">Object</button>
+            </div>
+        </div>
+        <div class="row">
+            <label for="show">Show empty fields</label>
+            <input type="checkbox" id="show" />
+        </div>
+        <div class="actions">
+            <span id="copyStatus" class="copy-status" aria-live="polite"></span>
+            <button id="download" type="button">Download</button>
+            <button id="copy" type="button">Copy</button>
+        </div>
+    </footer>
+
     <script src="popup.bundle.js"></script>
 </body>
 

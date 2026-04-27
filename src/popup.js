@@ -2,12 +2,16 @@ import { prettyPrintJson } from 'pretty-print-json';
 
 class MeetingPopup {
     constructor() {
+        this.body = document.body;
+        this.headerLabel = document.getElementById('meeting-label');
+        this.refreshButton = document.getElementById('refresh');
         this.showToggle = document.getElementById('show');
-        this.responseType = document.getElementById('responseType');
-        this.formContainer = document.getElementById('form');
         this.codeDisplay = document.getElementById('code');
         this.copyButton = document.getElementById('copy');
-        
+        this.copyStatus = document.getElementById('copyStatus');
+        this.downloadButton = document.getElementById('download');
+        this.formatRadios = Array.from(document.querySelectorAll('[role="radio"][data-format]'));
+
         this.#initialize();
     }
 
@@ -20,9 +24,17 @@ class MeetingPopup {
 
     #setupEventListeners() {
         this.showToggle.addEventListener('change', (e) => this.#handleToggleChange(e));
-        this.responseType.addEventListener('change', (e) => this.#handleResponseTypeChange(e));
+        this.formatRadios.forEach((button) => {
+            button.addEventListener('click', () => this.#handleFormatChange(button.dataset.format));
+        });
         this.copyButton.addEventListener('click', () => this.#handleCopyClick());
+        this.downloadButton.addEventListener('click', () => this.#handleDownloadClick());
+        this.refreshButton.addEventListener('click', () => this.#loadMeetingDataFromActiveTabs());
         window.addEventListener('unload', () => this.#cleanupStorage());
+    }
+
+    #setState(state) {
+        this.body.className = `state-${state}`;
     }
 
     #loadShowToggleState() {
@@ -33,13 +45,25 @@ class MeetingPopup {
 
     #loadResponseTypeState() {
         chrome.storage.local.get('responseType', (data) => {
-            this.responseType.value = data.responseType || 'array';
+            this.#setFormat(data.responseType || 'array');
         });
     }
 
+    #setFormat(responseType) {
+        this.formatRadios.forEach((button) => {
+            button.setAttribute('aria-checked', button.dataset.format === responseType ? 'true' : 'false');
+        });
+    }
+
+    #getFormat() {
+        const checked = this.formatRadios.find((button) => button.getAttribute('aria-checked') === 'true');
+        return checked?.dataset.format || 'array';
+    }
+
     #loadMeetingDataFromActiveTabs() {
-        const contentScriptUrls = chrome.runtime.getManifest().content_scripts.flatMap(script => script.matches);
-        
+        this.#setState('loading');
+        const contentScriptUrls = chrome.runtime.getManifest().content_scripts.flatMap((script) => script.matches);
+
         chrome.tabs.query({
             url: contentScriptUrls,
             active: true
@@ -47,18 +71,20 @@ class MeetingPopup {
     }
 
     #handleTabsQuery(tabs) {
-        if (tabs.length > 0) {
-            this.#extractMeetingDataFromTabs(tabs);
-            this.formContainer.style.display = 'block';
-        } else {
-            this.#displayErrorMessage();
-            this.formContainer.style.display = 'none';
+        if (tabs.length === 0) {
+            this.#showEmpty();
+            return;
         }
+        this.#extractMeetingDataFromTabs(tabs);
     }
 
     #extractMeetingDataFromTabs(tabs) {
-        tabs.forEach(tab => {
+        tabs.forEach((tab) => {
             chrome.tabs.sendMessage(tab.id, { action: 'getSource' }, (meetingData) => {
+                if (!meetingData || meetingData.length === 0) {
+                    this.#showEmpty();
+                    return;
+                }
                 this.#saveMeetingDataAndRender(meetingData);
             });
         });
@@ -66,56 +92,64 @@ class MeetingPopup {
 
     #saveMeetingDataAndRender(meetingData) {
         chrome.storage.local.set({ meeting: meetingData }, () => {
+            this.#setState('ready');
+            this.#updateHeaderLabel(meetingData);
             this.#renderMeetingData();
         });
     }
 
-    #displayErrorMessage() {
-        const errorElement = this.#createErrorElement('You must be in the meetings page');
-        this.codeDisplay.appendChild(errorElement);
+    #showEmpty() {
+        this.headerLabel.textContent = '';
+        this.#setState('empty');
     }
 
-    #createErrorElement(message) {
-        const parser = new DOMParser();
-        const errorHtml = `<span id="error">${message}</span>`;
-        return parser.parseFromString(errorHtml, 'text/html').body.firstChild;
+    #updateHeaderLabel(meetingData) {
+        const summary = meetingData
+            .map((meeting) => [meeting.label, meeting.week].filter(Boolean).join(' · '))
+            .filter(Boolean)
+            .join(' / ');
+        this.headerLabel.textContent = summary;
     }
 
     #handleToggleChange(event) {
-        const isChecked = event.currentTarget.checked;
-        this.#saveShowToggleState(isChecked);
+        chrome.storage.local.set({ show: event.currentTarget.checked });
         this.#renderMeetingData();
     }
 
-    #saveShowToggleState(isChecked) {
-        chrome.storage.local.set({ show: isChecked });
-    }
-
-    #handleResponseTypeChange(event) {
-        const responseType = event.currentTarget.value;
-        this.#saveResponseTypeState(responseType);
-        this.#renderMeetingData();
-    }
-
-    #saveResponseTypeState(responseType) {
+    #handleFormatChange(responseType) {
+        this.#setFormat(responseType);
         chrome.storage.local.set({ responseType });
+        this.#renderMeetingData();
     }
 
     #handleCopyClick() {
-        const textToCopy = this.codeDisplay.innerText;
-        
-        navigator.clipboard.writeText(textToCopy).then(() => {
-            this.#showCopyFeedback();
+        navigator.clipboard.writeText(this.codeDisplay.innerText).then(() => {
+            this.copyStatus.textContent = 'Copied';
+            setTimeout(() => { this.copyStatus.textContent = ''; }, 1500);
         });
     }
 
-    #showCopyFeedback() {
-        const originalText = this.copyButton.textContent;
-        this.copyButton.textContent = "Done!";
-        
-        setTimeout(() => {
-            this.copyButton.textContent = originalText;
-        }, 1000);
+    #handleDownloadClick() {
+        chrome.storage.local.get('meeting', (data) => {
+            if (!data.meeting) return;
+
+            const responseType = this.#getFormat();
+            const payload = this.#normalizeResponseType(data.meeting, responseType);
+            const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const filename = this.#buildDownloadFilename(data.meeting);
+
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = filename;
+            link.click();
+            URL.revokeObjectURL(url);
+        });
+    }
+
+    #buildDownloadFilename(meetingData) {
+        const weekTag = meetingData.find((meeting) => meeting.week)?.week;
+        return weekTag ? `meetings-${weekTag}.json` : 'meetings.json';
     }
 
     #renderMeetingData() {
@@ -124,13 +158,13 @@ class MeetingPopup {
             if (!meetingData) return;
 
             const shouldFormat = this.showToggle.checked;
-            const responseType = this.responseType.value;
+            const responseType = this.#getFormat();
             const normalizedMeetingData = shouldFormat
-                ? meetingData.map(meeting => this.#formatMeetingForDisplay(meeting))
+                ? meetingData.map((meeting) => this.#formatMeetingForDisplay(meeting))
                 : meetingData;
             const dataToRender = this.#normalizeResponseType(normalizedMeetingData, responseType);
             const formattedJson = this.#generateFormattedJson(dataToRender);
-            
+
             this.#updateCodeDisplay(formattedJson);
         });
     }
@@ -179,11 +213,11 @@ class MeetingPopup {
     }
 
     #addSpeakerFieldToArray(parts) {
-        return parts.map(part => ({ ...part, speaker: '' }));
+        return parts.map((part) => ({ ...part, speaker: '' }));
     }
 
     #formatFieldMinistryParts(parts) {
-        return parts.map(part => ({
+        return parts.map((part) => ({
             ...part,
             assigned: '',
             assistant: this.#shouldHaveAssistant(part) ? '' : undefined
@@ -204,12 +238,8 @@ class MeetingPopup {
 
     #updateCodeDisplay(formattedJson) {
         const parser = new DOMParser();
-        const htmlContent = `<div>${formattedJson}</div>`;
-        const parsedContent = parser.parseFromString(htmlContent, 'text/html');
-        
-        parsedContent.body.childNodes.forEach(node => {
-            this.codeDisplay.replaceChildren(node);
-        });
+        const wrapped = parser.parseFromString(`<div>${formattedJson}</div>`, 'text/html');
+        this.codeDisplay.replaceChildren(...wrapped.body.firstChild.childNodes);
     }
 
     #cleanupStorage() {
@@ -217,5 +247,4 @@ class MeetingPopup {
     }
 }
 
-// Initialize the popup when the page loads
 window.addEventListener('load', () => new MeetingPopup());
