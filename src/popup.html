@@ -1,21 +1,33 @@
 <!doctype html>
 <html>
-    <head>
-        <meta charset="UTF-8" />
-        <link rel=stylesheet href="popup.min.css">
-    </head>
-    <body>
-        <pre id="code"></pre>
-        <hr />
-        <div id="form">
-            <fieldset>
-                <dl>
-                    <dt><label for="show">Show fields to be assigned</label></dt>
-                    <dd><input type="checkbox" id="show" /></dd>
-                </dl>
-            </fieldset>
-            <button id="copy">Copy</button>
-        </div>
-        <script src="popup.bundle.js"></script>
-    </body>
+
+<head>
+    <meta charset="UTF-8" />
+    <link rel=stylesheet href="popup.min.css">
+</head>
+
+<body>
+    <pre id="code"></pre>
+    <hr />
+    <div id="form">
+        <fieldset>
+            <dl>
+                <dt><label for="responseType">Format:</label></dt>
+                <dd>
+                    <select id="responseType">
+                        <option value="array">Array</option>
+                        <option value="object">Object</option>
+                    </select>
+                </dd>
+            </dl>
+            <dl>
+                <dt><label for="show">Show fields to be assigned:</label></dt>
+                <dd><input type="checkbox" id="show" /></dd>
+            </dl>
+        </fieldset>
+        <button id="copy">Copy</button>
+    </div>
+    <script src="popup.bundle.js"></script>
+</body>
+
 </html>

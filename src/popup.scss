@@ -6,7 +6,8 @@
     border: 0;
 }
 
-html, body {
+html,
+body {
     height: 100%;
     float: left;
     font-family: Arial, Verdana, Helvetica, sans-serif;
@@ -28,6 +29,7 @@ pre#code {
     padding: 10px;
     overflow: auto;
     background-color: #CCC;
+
     span#error {
         text-align: center;
         width: 100%;
@@ -45,15 +47,102 @@ div#form {
     border-top: 1px solid #000;
     user-select: none;
 
-    fieldset, dd {
+    fieldset {
+
         float: left;
+        
+        dl {
+            display: grid;
+            grid-template-columns: auto 1fr;
+            gap: 0.75rem 1rem;
+            align-items: center;
+            margin: 0;
+
+            &+dl {
+                margin-top: 1rem;
+            }
+
+            dt {
+                margin: 0;
+
+                label {
+                    font-weight: 500;
+                    color: #333;
+                    cursor: pointer;
+                    font-size: 0.95rem;
+                }
+            }
+
+            dd {
+                margin: 0;
+
+                input[type="checkbox"] {
+                    cursor: pointer;
+                    width: 1.125rem;
+                    height: 1.125rem;
+                    accent-color: #0066cc;
+                }
+
+                select {
+                    padding: 0.5rem 0.75rem;
+                    border: 1px solid #ccc;
+                    border-radius: 4px;
+                    background-color: #fff;
+                    font-size: 0.95rem;
+                    cursor: pointer;
+                    transition: border-color 0.2s;
+
+                    &:hover {
+                        border-color: #999;
+                    }
+
+                    &:focus {
+                        outline: none;
+                        border-color: #0066cc;
+                        box-shadow: 0 0 0 3px rgba(0, 102, 204, 0.1);
+                    }
+                }
+            }
+        }
     }
 
-    dt {
-      float: right;
-    }
-}
+    button#copy {
+        float: right;
+        padding: 0.625rem 1.5rem;
+        background-color: #0066cc;
+        color: #fff;
+        border: none;
+        border-radius: 4px;
+        font-size: 0.95rem;
+        font-weight: 500;
+        cursor: pointer;
+        transition: background-color 0.2s, transform 0.1s;
 
-button#copy {
-    float: right;
+        &:hover {
+            background-color: #0052a3;
+        }
+
+        &:active {
+            transform: translateY(1px);
+        }
+
+        &:focus {
+            outline: none;
+            box-shadow: 0 0 0 3px rgba(0, 102, 204, 0.3);
+        }
+
+        &:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+            opacity: 0.6;
+
+            &:hover {
+                background-color: #ccc;
+            }
+
+            &:active {
+                transform: none;
+            }
+        }
+    }
 }

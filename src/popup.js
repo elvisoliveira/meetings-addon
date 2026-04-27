@@ -3,6 +3,7 @@ import { prettyPrintJson } from 'pretty-print-json';
 class MeetingPopup {
     constructor() {
         this.showToggle = document.getElementById('show');
+        this.responseType = document.getElementById('responseType');
         this.formContainer = document.getElementById('form');
         this.codeDisplay = document.getElementById('code');
         this.copyButton = document.getElementById('copy');
@@ -13,11 +14,13 @@ class MeetingPopup {
     #initialize() {
         this.#setupEventListeners();
         this.#loadShowToggleState();
+        this.#loadResponseTypeState();
         this.#loadMeetingDataFromActiveTabs();
     }
 
     #setupEventListeners() {
         this.showToggle.addEventListener('change', (e) => this.#handleToggleChange(e));
+        this.responseType.addEventListener('change', (e) => this.#handleResponseTypeChange(e));
         this.copyButton.addEventListener('click', () => this.#handleCopyClick());
         window.addEventListener('unload', () => this.#cleanupStorage());
     }
@@ -25,6 +28,12 @@ class MeetingPopup {
     #loadShowToggleState() {
         chrome.storage.local.get('show', (data) => {
             this.showToggle.checked = data.show || false;
+        });
+    }
+
+    #loadResponseTypeState() {
+        chrome.storage.local.get('responseType', (data) => {
+            this.responseType.value = data.responseType || 'array';
         });
     }
 
@@ -57,7 +66,7 @@ class MeetingPopup {
 
     #saveMeetingDataAndRender(meetingData) {
         chrome.storage.local.set({ meeting: meetingData }, () => {
-            this.#renderMeetingData(this.showToggle.checked);
+            this.#renderMeetingData();
         });
     }
 
@@ -75,11 +84,21 @@ class MeetingPopup {
     #handleToggleChange(event) {
         const isChecked = event.currentTarget.checked;
         this.#saveShowToggleState(isChecked);
-        this.#renderMeetingData(isChecked);
+        this.#renderMeetingData();
     }
 
     #saveShowToggleState(isChecked) {
         chrome.storage.local.set({ show: isChecked });
+    }
+
+    #handleResponseTypeChange(event) {
+        const responseType = event.currentTarget.value;
+        this.#saveResponseTypeState(responseType);
+        this.#renderMeetingData();
+    }
+
+    #saveResponseTypeState(responseType) {
+        chrome.storage.local.set({ responseType });
     }
 
     #handleCopyClick() {
@@ -99,16 +118,29 @@ class MeetingPopup {
         }, 1000);
     }
 
-    #renderMeetingData(shouldFormat) {
+    #renderMeetingData() {
         chrome.storage.local.get('meeting', (data) => {
             const meetingData = data.meeting;
             if (!meetingData) return;
-            
-            const dataToRender = shouldFormat ? meetingData.map(meeting => this.#formatMeetingForDisplay(meeting)) : meetingData;
+
+            const shouldFormat = this.showToggle.checked;
+            const responseType = this.responseType.value;
+            const normalizedMeetingData = shouldFormat
+                ? meetingData.map(meeting => this.#formatMeetingForDisplay(meeting))
+                : meetingData;
+            const dataToRender = this.#normalizeResponseType(normalizedMeetingData, responseType);
             const formattedJson = this.#generateFormattedJson(dataToRender);
             
             this.#updateCodeDisplay(formattedJson);
         });
+    }
+
+    #normalizeResponseType(meetingData, responseType) {
+        if (responseType === 'object' && meetingData.length === 1) {
+            return meetingData[0];
+        }
+
+        return meetingData;
     }
 
     #formatMeetingForDisplay(meeting) {

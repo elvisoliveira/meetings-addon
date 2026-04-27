@@ -134,7 +134,7 @@ class MeetingExtractor {
 
     #buildMeetingStructure(meetingData) {
         const structure = {
-            week: this.#getElement('#todayWeek')?.value || null,
+            // week: this.#getElement('#todayWeek')?.value || null,
             label: meetingData.label,
             theme: meetingData.theme,
             opening_song: meetingData.songs[0],
