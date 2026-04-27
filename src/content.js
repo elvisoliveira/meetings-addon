@@ -5,6 +5,13 @@ class MeetingExtractor {
         sheep: 'dc-icon--sheep'  // Living as Christians
     };
 
+    #MONTH_NAMES = {
+        janeiro: 1, fevereiro: 2, marco: 3, março: 3, abril: 4, maio: 5, junho: 6,
+        julho: 7, agosto: 8, setembro: 9, outubro: 10, novembro: 11, dezembro: 12,
+        january: 1, february: 2, march: 3, april: 4, may: 5, june: 6,
+        july: 7, august: 8, september: 9, october: 10, november: 11, december: 12
+    };
+
     constructor() {
         this.#setupMessageListener();
     }
@@ -25,6 +32,7 @@ class MeetingExtractor {
 
     #extractSingleMeeting(meetingElement) {
         const meetingData = {
+            week: this.#extractWeek(meetingElement),
             label: this.#getTextContent('[data-pid="1"]', meetingElement),
             theme: this.#getTextContent('[data-pid="2"]', meetingElement),
             songs: this.#extractSongs(meetingElement),
@@ -36,6 +44,38 @@ class MeetingExtractor {
         this.#parseMeetingParts(meetingElement, meetingData);
 
         return this.#buildMeetingStructure(meetingData);
+    }
+
+    #extractWeek(meetingElement) {
+        const yearMatch = meetingElement.className.match(/\bpub-mwb(\d{2})\b/);
+        const labelText = this.#getTextContent('[data-pid="1"]', meetingElement);
+        if (!yearMatch || !labelText) return null;
+
+        const dayMatch = labelText.match(/\d+/);
+        const words = labelText.toLowerCase().match(/\p{L}+/gu) || [];
+        const monthName = words.find(word => this.#MONTH_NAMES[word]);
+        if (!dayMatch || !monthName) return null;
+
+        const day = parseInt(dayMatch[0], 10);
+        const month = this.#MONTH_NAMES[monthName];
+        const year = 2000 + parseInt(yearMatch[1], 10);
+        const startDate = new Date(Date.UTC(year, month - 1, day));
+
+        return this.#formatWorkbookWeek(startDate);
+    }
+
+    #formatWorkbookWeek(startMonday) {
+        // Week 1 is the week of the first Monday in the start date's calendar year.
+        // This keeps cross-year meetings on the side of their starting year:
+        // a Monday in late December stays in YYYY-52/53; January Mondays start at YYYY-01.
+        const year = startMonday.getUTCFullYear();
+        const jan1DayOfWeek = new Date(Date.UTC(year, 0, 1)).getUTCDay() || 7;
+        const firstMondayDay = 1 + ((8 - jan1DayOfWeek) % 7);
+        const firstMonday = new Date(Date.UTC(year, 0, firstMondayDay));
+
+        const weekNumber = Math.floor((startMonday - firstMonday) / (7 * 86400000)) + 1;
+
+        return `${year}-${String(weekNumber).padStart(2, '0')}`;
     }
 
     #extractSongs(meetingElement) {
@@ -134,7 +174,7 @@ class MeetingExtractor {
 
     #buildMeetingStructure(meetingData) {
         const structure = {
-            // week: this.#getElement('#todayWeek')?.value || null,
+            week: meetingData.week,
             label: meetingData.label,
             theme: meetingData.theme,
             opening_song: meetingData.songs[0],
